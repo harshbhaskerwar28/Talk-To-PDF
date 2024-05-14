@@ -46,27 +46,65 @@ The application leverages several libraries and technologies to achieve its func
 - pytesseract
 - Pillow
 - LangChain
-- Google Generative AI
-- FAISS
+- Google
+User
+give only that part i will add it to my befor code
+ChatGPT
+markdown
+Copy code
+## Set Environment Variables
 
-The application follows a modular design, with separate functions and components responsible for different tasks, such as file processing, text extraction, embedding generation, vector storage, and response generation.
-
-## Setup and Usage
-To set up and run the application locally, follow these steps:
-1. Clone the repository from the provided source.
-2. Install the required dependencies by running `pip install -r requirements.txt`.
-3. Set up the Google Generative AI API key as an environment variable.
-4. Update the path for the Tesseract OCR executable in the code.
-5. Install Tesseract OCR by downloading and running the setup file from [this link](https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-5.3.3.20231005.exe).
-6. Run the Streamlit application using the command `streamlit run app.py`.
-7. Upload your PDF and image files through the web interface.
-8. Enable the OCR option for PDF files if needed.
-9. Ask questions related to the content of the uploaded files in the chat interface.
-10. Responses will be generated and displayed based on the relevant context and general knowledge.
-11. You can clear the conversation history and upload new files as needed.
+Set the `FORCE_CMAKE` environment variable to force the use of CMake:
+```bash
+set FORCE_CMAKE=1
 
 
-## Conclusion
-This Streamlit application provides a user-friendly interface for processing PDF and image files, extracting text content, and engaging in a conversational experience. By leveraging various libraries and APIs, the application offers a comprehensive solution for text extraction, embedding generation, similarity search, and contextual response generation.
+If you have an NVIDIA GPU, set DLLAMA_CUBLAS to ON:
+```bash
+set DLLAMA_CUBLAS=ON
 
-With its modular design and clear documentation, this project can serve as a starting point for further enhancements or integration into larger applications that require text processing and conversational AI capabilities.
+##Compile and Install
+
+Navigate into the llama-cpp-python directory:
+```bash
+cd llama-cpp-python
+
+
+Install the package using pip with the --upgrade and --force-reinstall options to ensure a clean installation:
+```bash
+python -m pip install --upgrade --force-reinstall llama-cpp-python
+
+
+
+## Set Environment Variables
+
+Set the `FORCE_CMAKE` environment variable to force the use of CMake:
+```bash
+set FORCE_CMAKE=1
+
+If you have an NVIDIA GPU, set DLLAMA_CUBLAS to ON:
+``bash
+set DLLAMA_CUBLAS=ON
+
+
+##Compile and Install
+
+Navigate into the llama-cpp-python directory:
+``bash
+cd llama-cpp-python
+Install the package using pip with the --upgrade and --force-reinstall options to ensure a clean installation:
+
+``bash
+python -m pip install --upgrade --force-reinstall llama-cpp-python
+
+If you encounter issues with the installation, you can try installing with the --no-cache-dir option:
+``bash
+python -m pip install --upgrade --force-reinstall --no-cache-dir llama-cpp-python
+
+##Verify Installation
+
+After the installation, verify that llama-cpp-python is installed correctly by running:
+``bash
+python -c "import llama; print(llama.__version__)"
+
+This should print the version of llama-cpp-python installed on your system.
