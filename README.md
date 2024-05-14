@@ -65,8 +65,66 @@ To set up and run the application locally, follow these steps:
 10. Responses will be generated and displayed based on the relevant context and general knowledge.
 11. You can clear the conversation history and upload new files as needed.
 
-
 ## Conclusion
 This Streamlit application provides a user-friendly interface for processing PDF and image files, extracting text content, and engaging in a conversational experience. By leveraging various libraries and APIs, the application offers a comprehensive solution for text extraction, embedding generation, similarity search, and contextual response generation.
-
 With its modular design and clear documentation, this project can serve as a starting point for further enhancements or integration into larger applications that require text processing and conversational AI capabilities.
+
+# Llama-CPP-Python Installation Guide
+
+This guide provides step-by-step instructions for setting up the `llama-cpp-python` project. Follow these steps to ensure a smooth installation process.
+
+## Prerequisites
+
+Before starting, make sure you have the following installed on your system:
+
+1. **Python**: Ensure you have Python installed.
+2. **Git**: Install Git if you haven't already.
+3. **Visual Studio Community**:
+  - Desktop development with C++
+  - Python development
+  - Linux embedded development with C++
+4. **CMake**: Install CMake.
+
+## Clone the Repository
+
+Open a command prompt and navigate to the directory where you want to clone the repository. Run the following command to clone the repository recursively, which includes the `llama.cpp` submodule:
+
+```bash
+git clone --recursive -j8 https://github.com/abetlen/llama-cpp-python.git
+
+## Set Environment Variables
+
+Set the `FORCE_CMAKE` environment variable to force the use of CMake:
+
+```bash
+set FORCE_CMAKE=1
+
+If you have an NVIDIA GPU, set `DLLAMA_CUBLAS` to ON:
+
+```bash
+DLLAMA_CUBLAS=ON
+
+##Compile and Install
+
+Navigate into the llama-cpp-python directory:
+
+```bash
+cd llama-cpp-python
+
+Install the package using `pip` with the `--upgrade` and `--force-reinstall` options to ensure a clean installation:
+
+```bash
+python -m pip install --upgrade --force-reinstall llama-cpp-python
+
+If you encounter issues with the installation, you can try installing with the `--no-cache-dir` option:
+
+```bash
+python -m pip install --upgrade --force-reinstall --no-cache-dir llama-cpp-python
+
+
+##Verify Installation
+
+After the installation, verify that `llama-cpp-python` is installed correctly by running:
+
+```bash
+python -c "import llama; print(llama.__version__)"
