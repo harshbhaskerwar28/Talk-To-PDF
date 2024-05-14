@@ -130,5 +130,10 @@ After the installation, verify that `llama-cpp-python` is installed correctly by
 python -c "import llama; print(llama.__version__)"
 
 
+**This should print the version of `llama-cpp-python` installed on your system.**
 
-###This should print the version of llama-cpp-python installed on your system.
+
+
+
+
+This should print the version of llama-cpp-python installed on your system.
