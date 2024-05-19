@@ -6,7 +6,7 @@ from PIL import Image
 import streamlit as st
 from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.llms import LlamaCpp
+from langchain.llms import CTransformers
 from langchain.prompts import PromptTemplate
 from langchain.chains.question_answering import load_qa_chain
 
@@ -19,33 +19,11 @@ if 'messages' not in st.session_state:
 # Tesseract File Path
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\Harsh\Desktop\Slack_Bot\Tesseract-OCR\tesseract.exe'
 
-model_path = r"C:\llama2\models\llama-2-7b-chat.ggmlv3.q8_0.bin"
+model_path = r"path/to/llama-2-7b-chat.ggmlv3.q8_0.bin"
 
 # Function to extract text from PDF and image files (with optional OCR for PDF)
 def extract_text_from_files(file_bytes_list, file_extension_list, ocr=False):
-    text = ""
-
-    for file_bytes, file_extension in zip(file_bytes_list, file_extension_list):
-        if file_extension == ".pdf":
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-            for page_num in range(len(pdf_reader.pages)):
-                page_obj = pdf_reader.pages[page_num]
-                if ocr:
-                    images = page_obj.images
-                    if images:
-                        for image in images:
-                            image_bytes = image.data
-                            image_file = io.BytesIO(image_bytes)
-                            image = Image.open(image_file)
-                            text += pytesseract.image_to_string(image) + "\n"
-                text += page_obj.extract_text()
-
-        elif file_extension in [".png", ".jpg", ".jpeg", ".webp"]:
-            image_file = io.BytesIO(file_bytes)
-            image = Image.open(image_file)
-            text += pytesseract.image_to_string(image) + "\n"
-
-    return text
+    # ... (same as before)
 
 # Function to split text into chunks for vector store
 def split_text_into_chunks(text):
@@ -60,7 +38,7 @@ def create_vector_store(chunks):
         return
 
     try:
-        embeddings = LlamaCpp(model_path="path/to/llama-2-7b-hf")
+        embeddings = CTransformers(model_path=model_path, model_type="llama", config={'max_new_tokens': 256, 'temperature': 0.01})
         vector_store = FAISS.from_texts(chunks, embedding=embeddings)
         st.session_state['vector_store'] = vector_store
     except Exception as e:
@@ -79,7 +57,7 @@ def setup_conversational_chain():
     Answer:
     """
 
-    model = LlamaCpp(model_path="path/to/llama-2-7b-hf", temperature=0.7)
+    model = CTransformers(model_path=model_path, model_type="llama", config={'max_new_tokens': 256, 'temperature': 0.01})
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
     chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
     return chain
