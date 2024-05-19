@@ -6,9 +6,10 @@ from PIL import Image
 import streamlit as st
 from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.llms import LlamaCpp
+from langchain.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 from langchain.chains.question_answering import load_qa_chain
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Initialize session state variables
 if 'vector_store' not in st.session_state:
@@ -58,8 +59,10 @@ def create_vector_store(chunks):
         return
 
     try:
-        embeddings = LlamaCpp(model_path="path/to/llama-2-7b-chat.ggmlv3.q8_0.bin")
-        vector_store = FAISS.from_texts(chunks, embedding=embeddings)
+        tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b")
+        model = AutoModelForCausalLM.from_pretrained("facebook/opt-6.7b")
+        pipe = HuggingFacePipeline(model=model, tokenizer=tokenizer)
+        vector_store = FAISS.from_texts(chunks, embedding=pipe)
         st.session_state['vector_store'] = vector_store
     except Exception as e:
         st.error(f"An error occurred while creating the vector store: {str(e)}")
@@ -77,9 +80,11 @@ def setup_conversational_chain():
     Answer:
     """
 
-    model = LlamaCpp(model_path="path/to/llama-2-7b-chat.ggmlv3.q8_0.bin", temperature=0.7)
+    tokenizer = AutoTokenizer.from_pretrained("facebook/opt-6.7b")
+    model = AutoModelForCausalLM.from_pretrained("facebook/opt-6.7b")
+    pipe = HuggingFacePipeline(model=model, tokenizer=tokenizer)
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
+    chain = load_qa_chain(llm=pipe, chain_type="stuff", prompt=prompt)
     return chain
 
 # Function to get a response to a user question
