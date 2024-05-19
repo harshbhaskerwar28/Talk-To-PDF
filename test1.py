@@ -6,7 +6,7 @@ from PIL import Image
 import streamlit as st
 from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.llms import TextGenLLM
+from langchain.llms.text_gen import LanguageModel
 from langchain.prompts import PromptTemplate
 from langchain.chains.question_answering import load_qa_chain
 
@@ -58,7 +58,7 @@ def create_vector_store(chunks):
         return
 
     try:
-        embeddings = TextGenLLM()
+        embeddings = LanguageModel()
         vector_store = FAISS.from_texts(chunks, embedding=embeddings)
         st.session_state['vector_store'] = vector_store
     except Exception as e:
@@ -77,7 +77,7 @@ def setup_conversational_chain():
     Answer:
     """
 
-    model = TextGenLLM()
+    model = LanguageModel()
     prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
     chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
     return chain
