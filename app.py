@@ -112,12 +112,11 @@ def generate_summary():
         )
         return summary_response['output_text']
 
-# Helper function to detect greetings
+# Helper function to detect greetings (added variations like 'hii')
 def is_greeting(text):
-    greetings = {"hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening"}
-    # Split the input text into individual words (lowercased)
+    greetings = {"hi", "hii", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening"}
+    # Check if any word in the text (in lowercase) is one of the greetings
     words = set(text.lower().split())
-    # Return True if any of the greeting words are found in the input
     return bool(greetings.intersection(words))
 
 # Main function
@@ -142,7 +141,7 @@ def main():
         st.session_state['vector_store'] = None
         st.experimental_rerun()
 
-    # Process uploaded files
+    # Process uploaded files (use a placeholder for status messages)
     if uploaded_files:
         file_bytes_list = [uploaded_file.read() for uploaded_file in uploaded_files]
         file_extension_list = [os.path.splitext(uploaded_file.name)[1].lower() for uploaded_file in uploaded_files]
@@ -153,11 +152,12 @@ def main():
                 with st.expander("Display Image"):
                     st.image(uploaded_file)
 
-        st.write("Processing your files...")
+        status_placeholder = st.empty()
+        status_placeholder.write("Processing your files...")
         file_text = extract_text_from_files(file_bytes_list, file_extension_list, ocr)
         text_chunks = split_text_into_chunks(file_text)
         create_vector_store(text_chunks)
-        st.write("Files processed successfully!")
+        status_placeholder.empty()  # Clear the processing message
 
     # Main content area
     st.title("Talk to PDF Bot")
@@ -172,12 +172,12 @@ def main():
     if st.session_state['vector_store'] is not None:
         st.write("Ask me anything about the file's content.")
 
-        # Display previous messages
+        # Display previous messages in the chat
         for message in st.session_state['messages']:
             with st.chat_message(message["role"]):
                 st.write(message["content"])
 
-        # Get user input
+        # Get user input from the chat input field
         if prompt := st.chat_input("", key="chat_input"):
             # Check if the input is a greeting
             if is_greeting(prompt):
