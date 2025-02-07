@@ -23,7 +23,7 @@ if 'vector_store' not in st.session_state:
 if 'messages' not in st.session_state:
     st.session_state['messages'] = []
 
-# Tesseract File Path
+# Tesseract File Path (update the path as needed)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\Harsh\Desktop\Slack_Bot\Tesseract-OCR\tesseract.exe'
 
 # Function to extract text from PDF and image files (with optional OCR for PDF)
@@ -52,7 +52,7 @@ def extract_text_from_files(file_bytes_list, file_extension_list, ocr=False):
             text += pytesseract.image_to_string(image) + "\n"
     return text
 
-# Function to split text into chunks for vector store
+# Function to split text into chunks for the vector store
 def split_text_into_chunks(text):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
     text_chunks = text_splitter.split_text(text)
@@ -112,6 +112,14 @@ def generate_summary():
         )
         return summary_response['output_text']
 
+# Helper function to detect greetings
+def is_greeting(text):
+    greetings = {"hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening"}
+    # Split the input text into individual words (lowercased)
+    words = set(text.lower().split())
+    # Return True if any of the greeting words are found in the input
+    return bool(greetings.intersection(words))
+
 # Main function
 def main():
     st.set_page_config(
@@ -154,7 +162,7 @@ def main():
     # Main content area
     st.title("Talk to PDF Bot")
 
-    # Summary Button to generate a summary of all uploaded PDFs
+    # Summary Button to generate a summary of all uploaded files
     if st.button("Generate Summary"):
         summary = generate_summary()
         if summary:
@@ -171,24 +179,31 @@ def main():
 
         # Get user input
         if prompt := st.chat_input("", key="chat_input"):
-            st.session_state['messages'].append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.write(prompt)
+            # Check if the input is a greeting
+            if is_greeting(prompt):
+                greeting_response = "Hello! How can I help you with your PDFs today?"
+                st.session_state['messages'].append({"role": "assistant", "content": greeting_response})
+                with st.chat_message("assistant"):
+                    st.write(greeting_response)
+            else:
+                st.session_state['messages'].append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.write(prompt)
 
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    response = get_response(prompt)
-                    # Handle response as a string or list of strings
-                    full_response = (
-                        response['output_text']
-                        if isinstance(response['output_text'], str)
-                        else ''.join(response['output_text'])
-                    )
-                    st.write(full_response)
-                    st.session_state['messages'].append({
-                        "role": "assistant",
-                        "content": full_response
-                    })
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        response = get_response(prompt)
+                        # Handle response as a string or list of strings
+                        full_response = (
+                            response['output_text']
+                            if isinstance(response['output_text'], str)
+                            else ''.join(response['output_text'])
+                        )
+                        st.write(full_response)
+                        st.session_state['messages'].append({
+                            "role": "assistant",
+                            "content": full_response
+                        })
 
 if __name__ == "__main__":
     main()
