@@ -15,8 +15,18 @@ from langchain.chains.question_answering import load_qa_chain  # Library for que
 
 # Load environment variables and configure API key
 load_dotenv()
-os.getenv("GOOGLE_API_KEY")
-gen_ai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+api_key = os.getenv("GOOGLE_API_KEY")
+
+# Check if API key is available
+if not api_key:
+    st.error("GOOGLE_API_KEY environment variable not found. Please set your API key.")
+    st.stop()
+
+try:
+    gen_ai.configure(api_key=api_key)
+except Exception as e:
+    st.error(f"Failed to configure Google Generative AI: {str(e)}")
+    st.stop()
 
 # Initialize session state variables
 if 'vector_store' not in st.session_state:
@@ -76,33 +86,55 @@ def setup_conversational_chain():
     
     Answer:
     """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", client=gen_ai, temperature=0.7)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
-    return chain
+    try:
+        model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.7)
+        prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+        chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
+        return chain
+    except Exception as e:
+        st.error(f"Failed to set up conversation chain: {str(e)}")
+        return None
 
 def get_response(user_question):
-    relevant_docs = st.session_state['vector_store'].similarity_search(user_question)
-    conversational_chain = setup_conversational_chain()
-    response = conversational_chain(
-        {"input_documents": relevant_docs, "question": user_question},
-        return_only_outputs=True
-    )
-    return response
+    try:
+        if st.session_state['vector_store'] is None:
+            return {"output_text": "Please upload a document first."}
+            
+        relevant_docs = st.session_state['vector_store'].similarity_search(user_question)
+        conversational_chain = setup_conversational_chain()
+        
+        if conversational_chain is None:
+            return {"output_text": "Sorry, I'm having trouble connecting to the AI service. Please try again later."}
+        
+        response = conversational_chain(
+            {"input_documents": relevant_docs, "question": user_question},
+            return_only_outputs=True
+        )
+        return response
+    except Exception as e:
+        st.error(f"Error getting response: {str(e)}")
+        return {"output_text": "I encountered an error while processing your question. Please try again."}
 
 def generate_summary():
     if st.session_state['vector_store'] is None:
         st.warning("No content available to summarize.")
         return
     with st.spinner("Generating summary..."):
-        conversational_chain = setup_conversational_chain()
-        docs = st.session_state['vector_store'].similarity_search("", k=10)
-        summary_prompt = "Summarize the key points from this content:"
-        summary_response = conversational_chain(
-            {"input_documents": docs, "question": summary_prompt},
-            return_only_outputs=True
-        )
-        return summary_response['output_text']
+        try:
+            conversational_chain = setup_conversational_chain()
+            if conversational_chain is None:
+                return "Sorry, I'm having trouble connecting to the AI service. Please try again later."
+                
+            docs = st.session_state['vector_store'].similarity_search("", k=10)
+            summary_prompt = "Summarize the key points from this content:"
+            summary_response = conversational_chain(
+                {"input_documents": docs, "question": summary_prompt},
+                return_only_outputs=True
+            )
+            return summary_response['output_text']
+        except Exception as e:
+            st.error(f"Error generating summary: {str(e)}")
+            return "Failed to generate summary due to an error."
 
 def is_greeting(text):
     # Recognize several greeting variations (e.g., "hii", "hello", etc.)
@@ -128,10 +160,11 @@ def chat_ui():
         if is_greeting(user_input):
             bot_response = "Hello! How can I help you with your PDFs today?"
         else:
-            response = get_response(user_input)
-            bot_response = (response['output_text']
-                            if isinstance(response['output_text'], str)
-                            else ''.join(response['output_text']))
+            with st.spinner("Thinking..."):
+                response = get_response(user_input)
+                bot_response = (response['output_text']
+                                if isinstance(response['output_text'], str)
+                                else ''.join(response['output_text']))
         st.session_state['messages'].append({"role": "assistant", "content": bot_response})
         with st.chat_message("assistant"):
             st.write(bot_response)
