@@ -1,17 +1,18 @@
 import os
-import io
-import PyPDF2  # Library to read PDF files
-import pytesseract  # Library for optical character recognition (OCR)
-from PIL import Image  # Library for image processing
-import streamlit as st  # Streamlit library for building web applications
-from dotenv import load_dotenv  # Library to load environment variables
-import google.generativeai as gen_ai  # Google Generative AI library
-from langchain_community.vectorstores import FAISS  # Vector store for efficient similarity search
-from langchain.prompts import PromptTemplate  # Library for creating prompts
-from langchain.text_splitter import RecursiveCharacterTextSplitter  # Library for splitting text into chunks
-from langchain_google_genai import GoogleGenerativeAIEmbeddings  # Embeddings for Google Generative AI
-from langchain_google_genai import ChatGoogleGenerativeAI  # Google Generative AI model for chatbot
-from langchain.chains.question_answering import load_qa_chain  # Library for question-answering chains
+import streamlit as st
+from dotenv import load_dotenv
+import google.generativeai as gen_ai
+from langchain_community.vectorstores import FAISS
+from langchain.prompts import PromptTemplate
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chains.question_answering import load_qa_chain
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables and configure API key
 load_dotenv()
@@ -24,202 +25,288 @@ if not api_key:
 
 try:
     gen_ai.configure(api_key=api_key)
+    logger.info("Google Generative AI configured successfully")
 except Exception as e:
     st.error(f"Failed to configure Google Generative AI: {str(e)}")
     st.stop()
 
-# Initialize session state variables
-if 'vector_store' not in st.session_state:
-    st.session_state['vector_store'] = None
-if 'messages' not in st.session_state:
-    st.session_state['messages'] = []
-
-# Set the Tesseract executable path (update as needed)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\Harsh\Desktop\Slack_Bot\Tesseract-OCR\tesseract.exe'
-
-def extract_text_from_files(file_bytes_list, file_extension_list, ocr=False):
-    text = ""
-    for file_bytes, file_extension in zip(file_bytes_list, file_extension_list):
-        if file_extension == ".pdf":
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-            for page in pdf_reader.pages:
-                if ocr:
-                    # If OCR is enabled, try to extract text from images on the page
-                    images = getattr(page, "images", None)
-                    if images:
-                        for image in images:
-                            image_bytes = image.data
-                            image_file = io.BytesIO(image_bytes)
-                            img = Image.open(image_file)
-                            text += pytesseract.image_to_string(img) + "\n"
-                extracted_text = page.extract_text()
-                if extracted_text:
-                    text += extracted_text
-        elif file_extension in [".png", ".jpg", ".jpeg", ".webp"]:
-            image_file = io.BytesIO(file_bytes)
-            image = Image.open(image_file)
-            text += pytesseract.image_to_string(image) + "\n"
-    return text
-
-def split_text_into_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
-    return text_splitter.split_text(text)
-
-def create_vector_store(chunks):
-    if not chunks:
-        st.warning("No text content found in the uploaded file.")
-        return
-    try:
-        # Use the fully qualified model name format for embeddings
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-        vector_store = FAISS.from_texts(chunks, embedding=embeddings)
-        st.session_state['vector_store'] = vector_store
-    except Exception as e:
-        st.error(f"An error occurred while creating the vector store: {str(e)}")
-
-def setup_conversational_chain():
-    prompt_template = """
-    Provide a detailed, concise, and user-friendly response based on the given context.
-    
-    Context: {context}
-    
-    Question: {question}
-    
-    Answer:
+class RAGPipeline:
     """
-    try:
-        # Use gemini-2.0-flash as requested
-        model = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
-        prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-        chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
-        return chain
-    except Exception as e:
-        st.error(f"Failed to set up conversation chain: {str(e)}")
-        return None
-
-def get_response(user_question):
-    try:
-        if st.session_state['vector_store'] is None:
-            return {"output_text": "Please upload a document first."}
-            
-        relevant_docs = st.session_state['vector_store'].similarity_search(user_question)
-        conversational_chain = setup_conversational_chain()
+    RAG (Retrieval-Augmented Generation) Pipeline for Document-based Q&A
+    
+    This pipeline implements the approach discussed in the assignment:
+    1. Document ingestion and chunking
+    2. Vector embedding and storage in FAISS
+    3. Query similarity search with relevance threshold
+    4. LLM-based response generation with context
+    5. Fallback response for irrelevant queries
+    """
+    
+    def __init__(self, relevance_threshold=0.7):
+        """
+        Initialize RAG Pipeline
         
-        if conversational_chain is None:
-            return {"output_text": "Sorry, I'm having trouble connecting to the AI service. Please try again later."}
+        Args:
+            relevance_threshold (float): Minimum similarity score for relevant documents
+        """
+        self.vector_store = None
+        self.relevance_threshold = relevance_threshold
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.3)
+        logger.info(f"RAG Pipeline initialized with threshold: {relevance_threshold}")
+    
+    def load_knowledge_base(self, document_text):
+        """
+        Load and process document text into vector store
         
-        response = conversational_chain(
-            {"input_documents": relevant_docs, "question": user_question},
-            return_only_outputs=True
-        )
-        return response
-    except Exception as e:
-        st.error(f"Error getting response: {str(e)}")
-        return {"output_text": "I encountered an error while processing your question. Please try again."}
-
-def generate_summary():
-    if st.session_state['vector_store'] is None:
-        st.warning("No content available to summarize.")
-        return
-    with st.spinner("Generating summary..."):
+        Args:
+            document_text (str): Raw text content of the knowledge base document
+        """
         try:
-            conversational_chain = setup_conversational_chain()
-            if conversational_chain is None:
-                return "Sorry, I'm having trouble connecting to the AI service. Please try again later."
-                
-            docs = st.session_state['vector_store'].similarity_search("", k=10)
-            summary_prompt = "Summarize the key points from this content:"
-            summary_response = conversational_chain(
-                {"input_documents": docs, "question": summary_prompt},
+            # Step 1: Split document into chunks for better retrieval
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                length_function=len
+            )
+            text_chunks = text_splitter.split_text(document_text)
+            logger.info(f"Document split into {len(text_chunks)} chunks")
+            
+            # Step 2: Create vector embeddings and store in FAISS
+            self.vector_store = FAISS.from_texts(text_chunks, embedding=self.embeddings)
+            logger.info("Vector store created successfully")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error loading knowledge base: {str(e)}")
+            return False
+    
+    def check_relevance(self, query, retrieved_docs):
+        """
+        Check if retrieved documents are relevant to the query
+        
+        Args:
+            query (str): User query
+            retrieved_docs: Documents retrieved from vector search
+            
+        Returns:
+            bool: True if relevant, False otherwise
+        """
+        if not retrieved_docs:
+            return False
+        
+        # Get similarity scores from FAISS search
+        docs_with_scores = self.vector_store.similarity_search_with_score(query, k=3)
+        
+        if not docs_with_scores:
+            return False
+        
+        # Check if best match exceeds threshold (lower score = higher similarity in FAISS)
+        best_score = docs_with_scores[0][1]
+        relevance_score = 1 / (1 + best_score)  # Convert distance to similarity
+        
+        logger.info(f"Relevance score: {relevance_score:.3f}, Threshold: {self.relevance_threshold}")
+        return relevance_score >= self.relevance_threshold
+    
+    def generate_response(self, query):
+        """
+        Generate response using RAG pipeline
+        
+        Args:
+            query (str): User question
+            
+        Returns:
+            str: Generated response or fallback message
+        """
+        if not self.vector_store:
+            return "Please load a knowledge base document first."
+        
+        try:
+            # Step 1: Retrieve relevant documents using similarity search
+            retrieved_docs = self.vector_store.similarity_search(query, k=3)
+            
+            # Step 2: Check relevance using threshold
+            if not self.check_relevance(query, retrieved_docs):
+                return "I cannot answer this question as it is not relevant to the loaded document."
+            
+            # Step 3: Generate response using LLM with retrieved context
+            prompt_template = """
+            You are an AI assistant that answers questions based only on the provided context.
+            If the context doesn't contain information to answer the question, say that you cannot answer.
+            
+            Context: {context}
+            
+            Question: {question}
+            
+            Answer (be concise and accurate):
+            """
+            
+            prompt = PromptTemplate(
+                template=prompt_template,
+                input_variables=["context", "question"]
+            )
+            
+            # Create QA chain
+            qa_chain = load_qa_chain(
+                llm=self.llm,
+                chain_type="stuff",
+                prompt=prompt
+            )
+            
+            # Generate response
+            response = qa_chain(
+                {"input_documents": retrieved_docs, "question": query},
                 return_only_outputs=True
             )
-            return summary_response['output_text']
+            
+            logger.info("Response generated successfully")
+            return response['output_text']
+            
         except Exception as e:
-            st.error(f"Error generating summary: {str(e)}")
-            return "Failed to generate summary due to an error."
+            logger.error(f"Error generating response: {str(e)}")
+            return "I encountered an error while processing your question. Please try again."
 
-def is_greeting(text):
-    # Recognize several greeting variations (e.g., "hii", "hello", etc.)
-    greetings = {"hi", "hii", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening"}
-    words = set(text.lower().split())
-    return bool(greetings.intersection(words))
-
-def chat_ui():
-    # Display the chat conversation
-    for message in st.session_state['messages']:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+def load_sample_document():
+    """
+    Load sample document about Artificial Intelligence
+    This serves as our knowledge base for demonstration
+    """
+    document_text = """
+    Artificial Intelligence (AI) and Machine Learning
     
-    # Get user input from the chat input box
-    user_input = st.chat_input("Type your message here")
-    if user_input:
-        # Append and display the user's message
-        st.session_state['messages'].append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.write(user_input)
-        
-        # Determine the assistant's response
-        if is_greeting(user_input):
-            bot_response = "Hello! How can I help you with your PDFs today?"
-        else:
-            with st.spinner("Thinking..."):
-                response = get_response(user_input)
-                bot_response = (response['output_text']
-                                if isinstance(response['output_text'], str)
-                                else ''.join(response['output_text']))
-        st.session_state['messages'].append({"role": "assistant", "content": bot_response})
-        with st.chat_message("assistant"):
-            st.write(bot_response)
+    Artificial Intelligence (AI) is a branch of computer science that aims to create intelligent machines 
+    that work and react like humans. AI has become an integral part of the technology industry and is 
+    revolutionizing various sectors including healthcare, finance, transportation, and education.
+    
+    Machine Learning is a subset of AI that provides systems the ability to automatically learn and 
+    improve from experience without being explicitly programmed. Machine learning focuses on the 
+    development of computer programs that can access data and use it to learn for themselves.
+    
+    Types of Machine Learning:
+    1. Supervised Learning: Uses labeled training data to learn a mapping function from input to output
+    2. Unsupervised Learning: Finds hidden patterns in data without labeled examples
+    3. Reinforcement Learning: Learns through interaction with an environment using rewards and penalties
+    
+    Deep Learning is a subset of machine learning that uses neural networks with multiple layers to 
+    model and understand complex patterns in data. It has been particularly successful in areas like 
+    image recognition, natural language processing, and speech recognition.
+    
+    Applications of AI:
+    - Healthcare: Medical diagnosis, drug discovery, personalized treatment
+    - Finance: Fraud detection, algorithmic trading, risk assessment
+    - Transportation: Autonomous vehicles, traffic optimization
+    - Technology: Virtual assistants, recommendation systems, search engines
+    
+    Natural Language Processing (NLP) is a field of AI that focuses on the interaction between computers 
+    and humans through natural language. NLP enables machines to read, understand, and derive meaning 
+    from human language in a valuable way.
+    
+    Computer Vision is another important field of AI that trains computers to interpret and understand 
+    the visual world. Using digital images from cameras and videos and deep learning models, machines 
+    can accurately identify and classify objects.
+    
+    The future of AI holds immense potential with developments in quantum computing, edge AI, and 
+    explainable AI making systems more powerful, efficient, and transparent.
+    """
+    return document_text
 
 def main():
-    st.set_page_config(page_title="Talk to PDF Bot", page_icon=":book:", layout="wide")
-
-    # Sidebar for file uploads
-    st.sidebar.title("Upload Files")
-    uploaded_files = st.sidebar.file_uploader(
-        "Upload your PDF or Image files", 
-        type=["pdf", "png", "jpg", "jpeg", "webp"], 
-        accept_multiple_files=True
+    """
+    Main Streamlit application
+    """
+    st.set_page_config(
+        page_title="RAG Pipeline Demo",
+        page_icon="🤖",
+        layout="wide"
     )
-    ocr = st.sidebar.checkbox("Enable OCR for PDF files")
     
-    if st.sidebar.button("Clear Conversation"):
-        st.session_state['messages'].clear()
-        st.session_state['vector_store'] = None
-        st.experimental_rerun()
+    st.title("🤖 RAG Pipeline Implementation")
+    st.subheader("Document-based Q&A with Relevance Filtering")
     
-    # Process uploaded files (if not already processed)
-    if uploaded_files and st.session_state['vector_store'] is None:
-        file_bytes_list = [uploaded_file.read() for uploaded_file in uploaded_files]
-        file_extension_list = [os.path.splitext(uploaded_file.name)[1].lower() for uploaded_file in uploaded_files]
-        for uploaded_file in uploaded_files:
-            file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-            if file_extension in [".png", ".jpg", ".jpeg", ".webp"]:
-                with st.expander("Display Image"):
-                    st.image(uploaded_file)
-        status_placeholder = st.empty()
-        status_placeholder.write("Processing your files...")
-        file_text = extract_text_from_files(file_bytes_list, file_extension_list, ocr)
-        text_chunks = split_text_into_chunks(file_text)
-        create_vector_store(text_chunks)
-        status_placeholder.empty()  # Clear the processing message
+    # Initialize RAG pipeline in session state
+    if 'rag_pipeline' not in st.session_state:
+        st.session_state.rag_pipeline = RAGPipeline()
+        # Load sample document
+        sample_doc = load_sample_document()
+        if st.session_state.rag_pipeline.load_knowledge_base(sample_doc):
+            st.success("✅ Knowledge base loaded successfully!")
+        else:
+            st.error("❌ Failed to load knowledge base")
     
-    st.title("Talk to PDF Bot")
+    # Display knowledge base info
+    with st.expander("📄 View Knowledge Base Document"):
+        st.write("**Sample Document: Artificial Intelligence and Machine Learning**")
+        st.write(load_sample_document())
     
-    # Button to generate a summary of uploaded files
-    if st.button("Generate Summary"):
-        summary = generate_summary()
-        if summary:
-            st.subheader("Summary of Uploaded Files:")
-            st.write(summary)
+    # Configuration section
+    st.sidebar.header("⚙️ Configuration")
+    threshold = st.sidebar.slider(
+        "Relevance Threshold",
+        min_value=0.1,
+        max_value=1.0,
+        value=0.7,
+        step=0.1,
+        help="Higher threshold = stricter relevance filtering"
+    )
+    st.session_state.rag_pipeline.relevance_threshold = threshold
     
-    # Add an initial greeting if no messages exist yet
-    if not st.session_state['messages']:
-        initial_greeting = "Hello! How can I help you with your PDFs today?"
-        st.session_state['messages'].append({"role": "assistant", "content": initial_greeting})
+    # Example queries section
+    st.sidebar.header("💡 Example Queries")
+    st.sidebar.write("**Relevant queries:**")
+    st.sidebar.write("- What is machine learning?")
+    st.sidebar.write("- Types of machine learning")
+    st.sidebar.write("- Applications of AI in healthcare")
     
-    # Display the chat interface
-    chat_ui()
+    st.sidebar.write("**Irrelevant queries:**")
+    st.sidebar.write("- What is the weather today?")
+    st.sidebar.write("- How to cook pasta?")
+    st.sidebar.write("- Latest movie reviews")
+    
+    # Main chat interface
+    st.header("💬 Ask Questions")
+    
+    # Query input
+    user_query = st.text_input(
+        "Enter your question:",
+        placeholder="e.g., What is machine learning?"
+    )
+    
+    # Generate response button
+    if st.button("🔍 Get Answer", type="primary"):
+        if user_query.strip():
+            with st.spinner("Processing your question..."):
+                response = st.session_state.rag_pipeline.generate_response(user_query)
+                
+                # Display response with styling
+                if "cannot answer this question" in response.lower():
+                    st.error(f"❌ **Response:** {response}")
+                else:
+                    st.success(f"✅ **Response:** {response}")
+        else:
+            st.warning("Please enter a question.")
+    
+    # Display pipeline information
+    st.header("🔧 Pipeline Information")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.info("""
+        **RAG Pipeline Steps:**
+        1. Document chunking & embedding
+        2. Vector storage in FAISS
+        3. Query similarity search
+        4. Relevance threshold check
+        5. LLM response generation
+        """)
+    
+    with col2:
+        st.info(f"""
+        **Current Configuration:**
+        - Model: Gemini 2.0 Flash
+        - Embedding: Google text-embedding-001
+        - Relevance Threshold: {threshold}
+        - Vector Store: FAISS
+        """)
 
 if __name__ == "__main__":
     main()
