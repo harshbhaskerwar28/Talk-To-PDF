@@ -70,7 +70,7 @@ def create_vector_store(chunks):
         st.warning("No text content found in the uploaded file.")
         return
     try:
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+        embeddings = GoogleGenerativeAIEmbeddings(model="embedding-001")
         vector_store = FAISS.from_texts(chunks, embedding=embeddings)
         st.session_state['vector_store'] = vector_store
     except Exception as e:
@@ -87,7 +87,7 @@ def setup_conversational_chain():
     Answer:
     """
     try:
-        model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.7)
+        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
         prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
         chain = load_qa_chain(llm=model, chain_type="stuff", prompt=prompt)
         return chain
